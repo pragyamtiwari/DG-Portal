@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}Manage User: {{ user.name }} - Data Governance Portal{% endblock %}
+{% block content %}
+<div class="dashboard-header">
+    <h2>Manage User: {{ user.name }}</h2>
+    <p>Manage details, roles, tags, and assigned policies for {{ user.name }}.</p>
+</div>
+
+<div class="quick-actions">
+    <h3 class="quick-actions-title">User Actions</h3>
+    <div class="quick-actions-buttons">
+        <a href="{{ url_for('admin.manage_users') }}" class="btn btn-secondary">
+            ← Back to All Users
+        </a>
+        <a href="{{ url_for('admin.whitelist') }}" class="btn btn-secondary">
+            Manage Whitelist
+        </a>
+    </div>
+</div>
+
+<div class="table-container">
+    <form method="POST" id="singleUserManagementForm">
+        <div class="bulk-actions">
+            <button type="submit" class="btn btn-action" id="saveChangesBtn" disabled>Save Changes</button>
+            <span class="selected-count" id="changesCount">0 changes pending</span>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Field</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Name</td>
+                    <td class="uneditable-field"><div style="font-weight: 500;">{{ user.name }}</div></td>
+                </tr>
+                <tr>
+                    <td>Email</td>
+                    <td class="uneditable-field" style="color: #666;">{{ user.email }}</td>
+                </tr>
+                <tr>
+                    <td>Role</td>
+                    <td>
+                        <button type="button" class="btn btn-sm role-toggle-btn {{ 'role-admin' if user.is_admin else 'role-user' }}" 
+                                data-user-uuid="{{ user.uuid }}" data-is-admin="{{ user.is_admin }}"
+                                onclick="toggleAdminStatus(this)">
+                            {{ 'Admin' if user.is_admin else 'User' }}
+                        </button>
+                        <input type="hidden" name="is_admin_{{ user.uuid }}" value="{{ 'on' if user.is_admin else 'off' }}" class="admin-status-input">
+                    </td>
+                </tr>
+                <tr>
+                    <td>Tags</td>
+                    <td>
+                        <div class="tags-container">
+                            {% if user.tags %}
+                                {% for tag in user.tags %}
+                                    <span class="tag-item" data-tag-uuid="{{ tag.uuid }}" onclick="markForRemoval(this, 'tag', '{{ user.uuid }}', '{{ tag.uuid }}')">
+                                        {{ tag.name }}
+                                    </span>
+                                {% endfor %}
+                            {% else %}
+                                <span style="color: #aaa; font-size: 0.85rem;">No tags</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Assigned Policies</td>
+                    <td>
+                        <div class="policies-container">
+                            {% if user.assignments %}
+                                {% for assignment in user.assignments %}
+                                    <span class="policy-item" data-assignment-uuid="{{ assignment.uuid }}" onclick="markForRemoval(this, 'policy', '{{ user.uuid }}', '{{ assignment.uuid }}')">
+                                        {{ assignment.policy_name }} ({{ assignment.status }})
+                                    </span>
+                                {% endfor %}
+                            {% else %}
+                                <span style="color: #aaa; font-size: 0.85rem;">No policies assigned</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3 style="color: #333; margin-top: 2rem; margin-bottom: 1rem; font-size: 1.25rem;">Assign New Tags</h3>
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+            <select name="new_tag_to_assign" class="form-input" style="flex: 2;">
+                <option value="">Select a tag to assign...</option>
+                {% for tag in available_tags %}
+                    <option value="{{ tag.uuid }}">{{ tag.name }}</option>
+                {% endfor %}
+            </select>
+            <button type="button" class="btn btn-action" onclick="assignTag()" {% if not available_tags %}disabled{% endif %}>Assign Tag</button>
+        </div>
+
+        <h3 style="color: #333; margin-top: 2rem; margin-bottom: 1rem; font-size: 1.25rem;">Assign New Policies</h3>
+        <div id="newPolicyAssignments">
+            <div class="new-policy-row" style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                <select name="new_policy_uuid" class="form-input" style="flex: 2;">
+                    <option value="">Select a policy to assign...</option>
+                    {% for policy in available_policies %}
+                        <option value="{{ policy.uuid }}">{{ policy.name }}</option>
+                    {% endfor %}
+                </select>
+                <input type="number" name="new_policy_timeframe_0" class="form-input" placeholder="Days" min="1" value="30" style="flex: 1;">
+                <button type="button" class="btn btn-danger" onclick="removePolicyRow(this)">Remove</button>
+            </div>
+        </div>
+        <button type="button" class="btn btn-secondary" onclick="addPolicyRow()">+ Add Another Policy</button>
+
+    </form>
+</div>
+
+<script>
+    let changesMade = 0;
+    let newPolicyRowCount = 1; // To keep track of dynamically added rows
+
+    function updateChangesCount() {
+        document.getElementById('changesCount').textContent = `${changesMade} changes pending`;
+        document.getElementById('saveChangesBtn').disabled = changesMade === 0;
+    }
+
+    function toggleAdminStatus(button) {
+        const userUuid = button.dataset.userUuid;
+        let isAdmin = button.dataset.isAdmin === '1';
+        const adminInput = document.querySelector(`input[name="is_admin_${userUuid}"]`);
+        const initialAdminStatus = {{ user.is_admin | tojson }};
+
+        if (isAdmin) {
+            button.classList.remove('role-admin');
+            button.classList.add('role-user');
+            button.textContent = 'User';
+            button.dataset.isAdmin = '0';
+            adminInput.value = 'off';
+        } else {
+            button.classList.remove('role-user');
+            button.classList.add('role-admin');
+            button.textContent = 'Admin';
+            button.dataset.isAdmin = '1';
+            adminInput.value = 'on';
+        }
+
+        // Update changes count based on deviation from initial state
+        const currentAdminStatus = (adminInput.value === 'on');
+        if (currentAdminStatus !== initialAdminStatus) {
+            changesMade++;
+        } else {
+            changesMade--;
+        }
+        updateChangesCount();
+    }
+
+    function markForRemoval(element, type, userUuid, itemUuid) {
+        element.classList.toggle('marked-for-removal');
+        const hiddenInputName = `remove_${type}_${userUuid}`;
+        let hiddenInput = document.querySelector(`input[name="${hiddenInputName}"][value="${itemUuid}"]`);
+
+        if (element.classList.contains('marked-for-removal')) {
+            if (!hiddenInput) {
+                hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = hiddenInputName;
+                hiddenInput.value = itemUuid;
+                document.getElementById('singleUserManagementForm').appendChild(hiddenInput);
+                changesMade++;
+            }
+        } else {
+            if (hiddenInput) {
+                hiddenInput.remove();
+                changesMade--;
+            }
+        }
+        updateChangesCount();
+    }
+
+    function addPolicyRow() {
+        const container = document.getElementById('newPolicyAssignments');
+        const newRow = document.createElement('div');
+        newRow.classList.add('new-policy-row');
+        newRow.style.cssText = 'display: flex; gap: 1rem; margin-bottom: 1rem;';
+        newRow.innerHTML = `
+            <select name="new_policy_uuid" class="form-input" style="flex: 2;">
+                <option value="">Select a policy to assign...</option>
+                {% for policy in available_policies %}
+                    <option value="{{ policy.uuid }}">{{ policy.name }}</option>
+                {% endfor %}
+            </select>
+            <input type="number" name="new_policy_timeframe_${newPolicyRowCount}" class="form-input" placeholder="Days" min="1" value="30" style="flex: 1;">
+            <button type="button" class="btn btn-danger" onclick="removePolicyRow(this)">Remove</button>
+        `;
+        container.appendChild(newRow);
+        newPolicyRowCount++;
+        changesMade++; // Adding a new policy row counts as a change
+        updateChangesCount();
+    }
+
+    function removePolicyRow(button) {
+        button.closest('.new-policy-row').remove();
+        changesMade--; // Removing a policy row counts as a change
+        updateChangesCount();
+    }
+
+    function assignTag() {
+        const tagSelect = document.querySelector('select[name="new_tag_to_assign"]');
+        const selectedOption = tagSelect.options[tagSelect.selectedIndex];
+        const tagUuid = selectedOption.value;
+        const tagName = selectedOption.textContent;
+
+        if (tagUuid) {
+            // Add hidden input for new tag assignment
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = `assign_tag_${tagUuid}`;
+            hiddenInput.value = tagUuid;
+            document.getElementById('singleUserManagementForm').appendChild(hiddenInput);
+
+            // Add tag to display
+            const tagsContainer = document.querySelector('.tags-container');
+            const newTagSpan = document.createElement('span');
+            newTagSpan.classList.add('tag-item');
+            newTagSpan.textContent = tagName;
+            newTagSpan.dataset.tagUuid = tagUuid;
+            newTagSpan.onclick = function() { markForRemoval(this, 'tag', '{{ user.uuid }}', tagUuid); };
+            tagsContainer.appendChild(newTagSpan);
+
+            // Disable the option and reset select
+            selectedOption.disabled = true;
+            tagSelect.value = "";
+
+            changesMade++;
+            updateChangesCount();
+        }
+    }
+
+    // Add CSS for marked-for-removal
+    const style = document.createElement('style');
+    style.innerHTML = `
+        .marked-for-removal {
+            text-decoration: line-through;
+            opacity: 0.6;
+            cursor: pointer;
+        }
+        .tag-item, .policy-item {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            background: #f3f4f6;
+            color: #374151;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            margin-right: 0.25rem;
+            margin-bottom: 0.25rem;
+            cursor: pointer;
+        }
+        .tag-item:hover, .policy-item:hover {
+            background: #e0e0e0;
+        }
+        .role-toggle-btn {
+            border: none;
+            padding: 0.25rem 0.75rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+        .uneditable-field {
+            background-color: #f0f0f0;
+            font-style: italic;
+            color: #888;
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Initial count update on page load
+    document.addEventListener('DOMContentLoaded', updateChangesCount);
+
+    // Intercept form submission to validate new policy assignments
+    document.getElementById('singleUserManagementForm').addEventListener('submit', function(event) {
+        const newPolicySelects = document.querySelectorAll('#newPolicyAssignments select[name="new_policy_uuid"]');
+        let isValid = true;
+
+        newPolicySelects.forEach((selectElement, index) => {
+            const policyUuid = selectElement.value;
+            const timeframeInput = document.querySelector(`input[name="new_policy_timeframe_${index}"]`);
+            const timeframeDays = timeframeInput ? parseInt(timeframeInput.value) : 0;
+
+            if (policyUuid && (isNaN(timeframeDays) || timeframeDays < 1)) {
+                alert('Please enter a valid timeframe (at least 1 day) for all new policy assignments.');
+                isValid = false;
+                event.preventDefault();
+                return;
+            }
+        });
+
+        if (!isValid) {
+            return;
+        }
+
+        if (changesMade === 0) {
+            alert('No changes to save.');
+            event.preventDefault();
+            return;
+        }
+
+        if (!confirm('Are you sure you want to save these changes?')) {
+            event.preventDefault();
+        }
+    });
+</script>
+{% endblock %}

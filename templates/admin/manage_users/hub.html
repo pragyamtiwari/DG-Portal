@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Manage Users - Data Governance Portal{% endblock %}
+{% block content %}
+<div class="dashboard-header">
+    <h2>Manage Users</h2>
+    <p>Control user roles and permissions within the system</p>
+</div>
+
+<div class="dashboard-grid">
+    <a href="{{ url_for('admin.manage_users') }}" class="dashboard-card">
+        <img src="https://cdn.jsdelivr.net/npm/heroicons@2.0.18/24/outline/users.svg" width="50" height="50" alt="Users" style="margin-bottom: 1rem;">
+        <h3>Manage All Users</h3>
+        <p>View and manage all users, roles, tags, and policies</p>
+    </a>
+    
+    <a href="{{ url_for('admin.whitelist') }}" class="dashboard-card">
+        <img src="https://cdn.jsdelivr.net/npm/heroicons@2.0.18/24/outline/check-circle.svg" width="50" height="50" alt="Users" style="margin-bottom: 1rem;">
+        <h3>Manage Whitelist</h3>
+        <p>Add or remove emails from the login whitelist</p>
+    </a>
+</div>
+
+<div class="quick-actions mt-4">
+    <h3 class="quick-actions-title">Navigation</h3>
+    <div class="quick-actions-buttons">
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">
+            ← Back to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}

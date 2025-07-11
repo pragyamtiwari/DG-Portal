@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}Manage Policy: {{ policy.name }} - Data Governance Portal{% endblock %}
+{% block content %}
+<div class="dashboard-header">
+    <h2>Manage Policy: {{ policy.name }}</h2>
+    <p>Manage details, assignments, and tag links for {{ policy.name }}.</p>
+</div>
+
+<div class="quick-actions">
+    <h3 class="quick-actions-title">Policy Actions</h3>
+    <div class="quick-actions-buttons">
+        <a href="{{ url_for('admin.manage_policies') }}" class="btn btn-secondary">
+            ← Back to All Policies
+        </a>
+        <form action="{{ url_for('admin.delete_policy') }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this policy? This will also delete all associated assignments and tag links.');" style="display:inline;">
+            <input type="hidden" name="policies" value="{{ policy.uuid }}">
+            <button type="submit" class="btn btn-danger">Delete Policy</button>
+        </form>
+    </div>
+</div>
+
+<div class="table-container">
+    <form method="POST" id="singlePolicyManagementForm">
+        <div class="bulk-actions">
+            <button type="submit" class="btn btn-action" id="saveChangesBtn" disabled>Save Changes</button>
+            <span class="selected-count" id="changesCount">0 changes pending</span>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Field</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Policy Name</td>
+                    <td>
+                        <input type="text" name="name" class="form-input" value="{{ policy.name }}" placeholder="Policy Name" maxlength="100">
+                    </td>
+                </tr>
+                <tr>
+                    <td>Description</td>
+                    <td>
+                        <textarea name="description" class="form-input" placeholder="Policy Description" maxlength="500" rows="4" style="resize: vertical;">{{ policy.description }}</textarea>
+                    </td>
+                </tr>
+                <tr>
+                    <td>PDF Document Link</td>
+                    <td>
+                        <input type="url" name="pdf_link" class="form-input" value="{{ policy.pdf_link }}" placeholder="https://example.com/document.pdf">
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3 style="color: #333; margin-top: 2rem; margin-bottom: 1rem; font-size: 1.25rem;">Assigned Users</h3>
+        <div class="policies-container">
+            {% if policy.assignments %}
+                {% for assignment in policy.assignments %}
+                    <span class="policy-item" tabindex="0" role="button" data-assignment-uuid="{{ assignment.uuid }}" onclick="markForRemoval(this, 'assignment', '{{ assignment.uuid }}')">
+                        {{ assignment.user_name }} ({{ assignment.status }})
+                    </span>
+                {% endfor %}
+            {% else %}
+                <span style="color: #aaa; font-size: 0.85rem;">No users assigned to this policy.</span>
+            {% endif %}
+        </div>
+
+        <h3 style="color: #333; margin-top: 2rem; margin-bottom: 1rem; font-size: 1.25rem;">Assign New Users</h3>
+        <div id="newUserAssignments">
+            <div class="new-assignment-row" style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                <select name="new_assignment_user_uuid" class="form-input new-assignment-user-select" style="flex: 2;" onchange="handleUserSelection(this)">
+                    <option value="">Select a user to assign...</option>
+                    {% for user in available_users %}
+                        <option value="{{ user.uuid }}">{{ user.name }} ({{ user.email }})</option>
+                    {% endfor %}
+                </select>
+                <input type="date" name="new_assignment_due_date_0" class="form-input" style="flex: 1;">
+                <button type="button" class="btn btn-danger" onclick="removeAssignmentRow(this)">Remove</button>
+            </div>
+        </div>
+        <button type="button" class="btn btn-secondary" onclick="addAssignmentRow()">+ Add Another User</button>
+
+        <h3 style="color: #333; margin-top: 2rem; margin-bottom: 1rem; font-size: 1.25rem;">Linked Tags</h3>
+        <div class="tags-container">
+            {% if linked_tags %}
+                {% for tag_policy in linked_tags %}
+                    <span class="tag-item" data-tag-policy-uuid="{{ tag_policy.uuid }}" onclick="markForRemoval(this, 'tag_policy', '{{ tag_policy.uuid }}')">
+                        {{ tag_policy.tag_name }} (Due: {{ tag_policy.due_date | timestamp_to_date }})
+                    </span>
+                {% endfor %}
+            {% else %}
+                <span style="color: #aaa; font-size: 0.85rem;">No tags linked to this policy.</span>
+            {% endif %}
+        </div>
+
+        <h3 style="color: #333; margin-top: 2rem; margin-bottom: 1rem; font-size: 1.25rem;">Link New Tags</h3>
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+            <select name="new_tag_to_link" class="form-input" style="flex: 2;">
+                <option value="">Select a tag to link...</option>
+                {% for tag in available_tags %}
+                    <option value="{{ tag.uuid }}">{{ tag.name }}</option>
+                {% endfor %}
+            </select>
+            <input type="date" name="new_tag_link_due_date" class="form-input" style="flex: 1;">
+            <button type="button" class="btn btn-action" onclick="linkTag()" {% if not available_tags %}disabled{% endif %}>Link Tag</button>
+        </div>
+
+    </form>
+</div>
+
+<script>
+    let changesMade = 0;
+    let newAssignmentRowCount = 1;
+
+    function updateChangesCount() {
+        document.getElementById('changesCount').textContent = `${changesMade} changes pending`;
+        document.getElementById('saveChangesBtn').disabled = changesMade === 0;
+    }
+
+    function markForRemoval(element, type, uuid) {
+        element.classList.toggle('marked-for-removal');
+        const hiddenInputName = `remove_${type}_${uuid}`;
+        let hiddenInput = document.querySelector(`input[name="${hiddenInputName}"][value="${uuid}"]`);
+
+        if (element.classList.contains('marked-for-removal')) {
+            if (!hiddenInput) {
+                hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = hiddenInputName;
+                hiddenInput.value = uuid;
+                document.getElementById('singlePolicyManagementForm').appendChild(hiddenInput);
+                changesMade++;
+            }
+        } else {
+            if (hiddenInput) {
+                hiddenInput.remove();
+                changesMade--;
+            }
+        }
+        updateChangesCount();
+    }
+
+    function handleUserSelection() {
+        const allSelects = document.querySelectorAll('select[name^="new_assignment_user_uuid"]');
+        const selectedUserUuids = new Set();
+
+        // Collect all currently selected user UUIDs
+        allSelects.forEach(selectElement => {
+            if (selectElement.value) {
+                selectedUserUuids.add(selectElement.value);
+            }
+        });
+
+        // Update options in all select elements
+        allSelects.forEach(selectElement => {
+            Array.from(selectElement.options).forEach(option => {
+                if (option.value && selectedUserUuids.has(option.value)) {
+                    // Disable if selected in another dropdown, but not in the current one
+                    option.disabled = (option.value !== selectElement.value);
+                } else {
+                    option.disabled = false;
+                }
+            });
+        });
+    }
+
+    function addAssignmentRow() {
+        const container = document.getElementById('newUserAssignments');
+        const newRow = document.createElement('div');
+        newRow.classList.add('new-assignment-row');
+        newRow.style.cssText = 'display: flex; gap: 1rem; margin-bottom: 1rem;';
+        newRow.innerHTML = `
+            <select name="new_assignment_user_uuid" class="form-input new-assignment-user-select" style="flex: 2;" onchange="handleUserSelection()">
+                <option value="">Select a user to assign...</option>
+                {% for user in available_users %}
+                    <option value="{{ user.uuid }}">{{ user.name }} ({{ user.email }})</option>
+                {% endfor %}
+            </select>
+            <input type="date" name="new_assignment_due_date_${newAssignmentRowCount}" class="form-input" style="flex: 1;">
+            <button type="button" class="btn btn-danger" onclick="removeAssignmentRow(this)">Remove</button>
+        `;
+        container.appendChild(newRow);
+        newAssignmentRowCount++;
+        changesMade++;
+        updateChangesCount();
+        handleUserSelection(); // Update selections after adding a new row
+    }
+
+    function removeAssignmentRow(button) {
+        button.closest('.new-assignment-row').remove();
+        changesMade--;
+        updateChangesCount();
+        handleUserSelection(); // Update selections after removing a row
+    }
+
+    function linkTag() {
+        const tagSelect = document.querySelector('select[name="new_tag_to_link"]');
+        const selectedOption = tagSelect.options[tagSelect.selectedIndex];
+        const tagUuid = selectedOption.value;
+        const tagName = selectedOption.textContent;
+        const dueDateInput = document.querySelector('input[name="new_tag_link_due_date"]');
+        const dueDate = dueDateInput ? dueDateInput.value : '';
+
+        if (tagUuid && dueDate) {
+            // Add hidden inputs for new tag link
+            const hiddenTagInput = document.createElement('input');
+            hiddenTagInput.type = 'hidden';
+            hiddenTagInput.name = `link_tag_${tagUuid}`;
+            hiddenTagInput.value = tagUuid;
+            document.getElementById('singlePolicyManagementForm').appendChild(hiddenTagInput);
+
+            const hiddenTimeframeInput = document.createElement('input');
+            hiddenTimeframeInput.type = 'hidden';
+            hiddenTimeframeInput.name = `link_tag_due_date_${tagUuid}`;
+            hiddenTimeframeInput.value = dueDate;
+            document.getElementById('singlePolicyManagementForm').appendChild(hiddenTimeframeInput);
+
+            // Add tag to display
+            const tagsContainer = document.querySelector('.tags-container');
+            const newTagSpan = document.createElement('span');
+            newTagSpan.classList.add('tag-item');
+            newTagSpan.textContent = `${tagName} (Due: ${dueDate})`;
+            newTagSpan.dataset.tagPolicyUuid = `new_${tagUuid}`; // Mark as new for potential removal before save
+            newTagSpan.onclick = function() { markForRemoval(this, 'tag_policy', `new_${tagUuid}`); };
+            tagsContainer.appendChild(newTagSpan);
+
+            // Disable the option and reset select
+            selectedOption.disabled = true;
+            tagSelect.value = "";
+            dueDateInput.value = ""; // Reset due date
+
+            changesMade++;
+            updateChangesCount();
+        } else if (tagUuid && !dueDate) {
+            alert('Please select a due date for the new tag link.');
+        } else {
+            alert('Please select a tag to link.');
+        }
+    }
+
+    // Initial count update on page load
+    document.addEventListener('DOMContentLoaded', updateChangesCount);
+
+    // Intercept form submission
+    document.getElementById('singlePolicyManagementForm').addEventListener('submit', function(event) {
+        // Validate new assignment timeframes
+        const newAssignmentSelects = document.querySelectorAll('#newUserAssignments select[name="new_assignment_user_uuid"]');
+        let isValid = true;
+
+        newAssignmentSelects.forEach((selectElement, index) => {
+            const userUuid = selectElement.value;
+            const dueDateInput = document.querySelector(`input[name="new_assignment_due_date_${index}"]`);
+            const dueDate = dueDateInput ? dueDateInput.value : '';
+
+            if (userUuid && !dueDate) {
+                alert('Please select a due date for all new user assignments.');
+                isValid = false;
+                event.preventDefault();
+                return;
+            }
+        });
+
+        if (!isValid) {
+            return;
+        }
+
+        if (changesMade === 0) {
+            alert('No changes to save.');
+            event.preventDefault();
+            return;
+        }
+
+        if (!confirm('Are you sure you want to save these changes?')) {
+            event.preventDefault();
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Manage All Users - Data Governance Portal{% endblock %}
+{% block content %}
+<div class="dashboard-header">
+    <h2>Manage All Users</h2>
+    <p>View and manage user details, roles, tags, and assigned policies.</p>
+</div>
+
+<div class="quick-actions">
+    <h3 class="quick-actions-title">User Actions</h3>
+    <div class="quick-actions-buttons">
+        <a href="{{ url_for('admin.whitelist') }}" class="btn btn-secondary">
+            Manage Whitelist
+        </a>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">
+            ← Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<div class="table-container">
+    <div class="form-group mb-3">
+        <label for="userSearch" class="form-label">Search Users</label>
+        <input type="text" id="userSearch" class="form-input" placeholder="Search by name or email..." onkeyup="filterUsers()">
+    </div>
+
+    <form method="POST" id="userManagementForm">
+        <div class="bulk-actions">
+            <button type="submit" class="btn btn-action" id="saveChangesBtn" disabled>Save Changes</button>
+            <span class="selected-count" id="changesCount">0 changes pending</span>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Tags</th>
+                    <th>Assigned Policies</th>
+                </tr>
+            </thead>
+            <tbody id="userTableBody">
+                {% for user in users %}
+                <tr data-user-uuid="{{ user['uuid'] }}" data-initial-admin="{{ user['is_admin'] }}">
+                    <td>
+                        <a href="{{ url_for('admin.manage_single_user', user_uuid=user['uuid']) }}" style="font-weight: 500; text-decoration: none; color: inherit;">
+                            {{ user['name'] }}
+                        </a>
+                    </td>
+                    <td style="color: #666;">{{ user['email'] }}</td>
+                    <td>
+                        <button type="button" class="btn btn-sm role-toggle-btn {{ 'role-admin' if user['is_admin'] else 'role-user' }}" 
+                                data-user-uuid="{{ user['uuid'] }}" data-is-admin="{{ user['is_admin'] }}"
+                                onclick="toggleAdminStatus(this)">
+                            {{ 'Admin' if user['is_admin'] else 'User' }}
+                        </button>
+                        <input type="hidden" name="is_admin_{{ user['uuid'] }}" value="{{ 'on' if user['is_admin'] else 'off' }}" class="admin-status-input">
+                    </td>
+                    <td>
+                        <div class="tags-container">
+                            {% if user['tags'] %}
+                                {% for tag in user['tags'] %}
+                                    <span class="tag-item" data-tag-uuid="{{ tag['uuid'] }}" onclick="markForRemoval(this, 'tag', '{{ user['uuid'] }}', '{{ tag['uuid'] }}')">
+                                        {{ tag['name'] }}
+                                    </span>
+                                {% endfor %}
+                            {% else %}
+                                <span style="color: #aaa; font-size: 0.85rem;">No tags</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="policies-container">
+                            {% if user['assignments'] %}
+                                {% for assignment in user['assignments'] %}
+                                    <span class="policy-item" data-assignment-uuid="{{ assignment['uuid'] }}" onclick="markForRemoval(this, 'policy', '{{ user['uuid'] }}', '{{ assignment['uuid'] }}')">
+                                        {{ assignment['policy_name'] }}
+                                    </span>
+                                {% endfor %}
+                            {% else %}
+                                <span style="color: #aaa; font-size: 0.85rem;">No policies</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </form>
+</div>
+
+<script>
+    let changesMade = 0;
+
+    function updateChangesCount() {
+        document.getElementById('changesCount').textContent = `${changesMade} changes pending`;
+        document.getElementById('saveChangesBtn').disabled = changesMade === 0;
+    }
+
+    function toggleAdminStatus(button) {
+        const userUuid = button.dataset.userUuid;
+        let isAdmin = button.dataset.isAdmin === '1';
+        const adminInput = document.querySelector(`input[name="is_admin_${userUuid}"]`);
+        const initialAdminStatus = document.querySelector(`tr[data-user-uuid="${userUuid}"]`).dataset.initialAdmin === '1';
+
+        if (isAdmin) {
+            button.classList.remove('role-admin');
+            button.classList.add('role-user');
+            button.textContent = 'User';
+            button.dataset.isAdmin = '0';
+            adminInput.value = 'off';
+        } else {
+            button.classList.remove('role-user');
+            button.classList.add('role-admin');
+            button.textContent = 'Admin';
+            button.dataset.isAdmin = '1';
+            adminInput.value = 'on';
+        }
+
+        // Update changes count based on deviation from initial state
+        if ((adminInput.value === 'on' && !initialAdminStatus) || (adminInput.value === 'off' && initialAdminStatus)) {
+            changesMade++;
+        } else if ((adminInput.value === 'on' && initialAdminStatus) || (adminInput.value === 'off' && !initialAdminStatus)) {
+            // If toggled back to original state
+            changesMade--;
+        }
+        updateChangesCount();
+    }
+
+    function markForRemoval(element, type, userUuid, itemUuid) {
+        element.classList.toggle('marked-for-removal');
+        const hiddenInputName = `remove_${type}_${userUuid}`;
+        let hiddenInput = document.querySelector(`input[name="${hiddenInputName}"][value="${itemUuid}"]`);
+
+        if (element.classList.contains('marked-for-removal')) {
+            if (!hiddenInput) {
+                hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = hiddenInputName;
+                hiddenInput.value = itemUuid;
+                document.getElementById('userManagementForm').appendChild(hiddenInput);
+                changesMade++;
+            }
+        } else {
+            if (hiddenInput) {
+                hiddenInput.remove();
+                changesMade--;
+            }
+        }
+        updateChangesCount();
+    }
+
+    function filterUsers() {
+        const searchTerm = document.getElementById('userSearch').value.toLowerCase();
+        const rows = document.querySelectorAll('#userTableBody tr');
+
+        rows.forEach(row => {
+            const name = row.children[0].textContent.toLowerCase();
+            const email = row.children[1].textContent.toLowerCase();
+            if (name.includes(searchTerm) || email.includes(searchTerm)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+
+    // Add CSS for marked-for-removal
+    const style = document.createElement('style');
+    style.innerHTML = `
+        .marked-for-removal {
+            text-decoration: line-through;
+            opacity: 0.6;
+            cursor: pointer;
+        }
+        .tag-item, .policy-item {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            background: #f3f4f6;
+            color: #374151;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            margin-right: 0.25rem;
+            margin-bottom: 0.25rem;
+            cursor: pointer;
+        }
+        .tag-item:hover, .policy-item:hover {
+            background: #e0e0e0;
+        }
+        .role-toggle-btn {
+            border: none;
+            padding: 0.25rem 0.75rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Initial count update on page load
+    document.addEventListener('DOMContentLoaded', updateChangesCount);
+</script>
+{% endblock %}

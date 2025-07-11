@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Manage Tag Policies - Data Governance Portal{% endblock %}
+{% block content %}
+<div class="dashboard-header">
+    <h2>Manage Policies for Tag: {{ tag_info['name'] }}</h2>
+    <p>Link and unlink policies to this tag. Policies linked here will be automatically assigned to new members of this tag.</p>
+</div>
+
+<div class="info-message mb-3">
+    <strong>Tag Description:</strong> {{ tag_info['description'] or 'No description provided' }}
+</div>
+
+<div class="quick-actions">
+    <h3 class="quick-actions-title">Policy Actions for Tag</h3>
+    <div class="quick-actions-buttons">
+        <a href="{{ url_for('admin.add_tag_policy', tag_uuid=tag_info['uuid']) }}" class="btn btn-action">
+            + Link Policy
+        </a>
+        <a href="{{ url_for('admin.manage_tags') }}" class="btn btn-secondary">
+            ← Back to Tags
+        </a>
+    </div>
+</div>
+
+<div class="table-container">
+    {% if tag_policies %}
+    <form method="POST" action="{{ url_for('admin.delete_tag_policy', tag_uuid=tag_info['uuid']) }}" id="deleteTagPolicyForm">
+        <div class="bulk-actions">
+            <button type="button" class="bulk-select-btn" onclick="selectAll()">Select All</button>
+            <button type="button" class="bulk-select-btn" onclick="selectNone()">Select None</button>
+            <span class="selected-count" id="selectedCount">0 policies selected</span>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th class="checkbox-cell">
+                        <input type="checkbox" id="selectAllCheckbox" class="custom-checkbox" 
+                               onchange="toggleAll(this)">
+                    </th>
+                    <th>Policy Name</th>
+                    <th>Description</th>
+                    <th>Default Due Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tp in tag_policies %}
+                <tr>
+                    <td class="checkbox-cell">
+                        <input type="checkbox" name="tag_policies" value="{{ tp['uuid'] }}" 
+                               class="custom-checkbox tag-policy-checkbox" 
+                               data-name="{{ tp['policy_name'] }}"
+                               onchange="updateSelectedCount()">
+                    </td>
+                    <td>
+                        <div style="font-weight: 500;">{{ tp['policy_name'] }}</div>
+                    </td>
+                    <td>
+                        <div style="color: #666; font-size: 0.9rem;">
+                            {{ tp['policy_description'] or "No description" }}
+                        </div>
+                    </td>
+                    <td>{{ tp['due_date'] | timestamp_to_date }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="action-buttons mt-3" style="display: flex; justify-content: space-between;">
+            <button type="submit" class="btn btn-danger" id="submitBtn" disabled>
+                Unlink Selected Policies
+            </button>
+        </div>
+    </form>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">🔗</div>
+        <p class="empty-state-text">No policies linked to this tag yet.</p>
+        <a href="{{ url_for('admin.add_tag_policy', tag_uuid=tag_info['uuid']) }}" class="btn btn-action mt-3">
+            Link a Policy
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    function updateSelectedCount() {
+        const checkboxes = document.querySelectorAll('.tag-policy-checkbox:checked');
+        const count = checkboxes.length;
+        const countElement = document.getElementById('selectedCount');
+        const submitBtn = document.getElementById('submitBtn');
+        
+        countElement.textContent = `${count} polic${count !== 1 ? 'ies' : 'y'} selected`;
+        submitBtn.disabled = count === 0;
+        
+        const allCheckboxes = document.querySelectorAll('.tag-policy-checkbox');
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        
+        if (count === 0) {
+            selectAllCheckbox.indeterminate = false;
+            selectAllCheckbox.checked = false;
+        } else if (count === allCheckboxes.length) {
+            selectAllCheckbox.indeterminate = false;
+            selectAllCheckbox.checked = true;
+        } else {
+            selectAllCheckbox.indeterminate = true;
+        }
+    }
+
+    function toggleAll(masterCheckbox) {
+        document.querySelectorAll('.tag-policy-checkbox').forEach(checkbox => {
+            checkbox.checked = masterCheckbox.checked;
+        });
+        updateSelectedCount();
+    }
+
+    function selectAll() {
+        document.querySelectorAll('.tag-policy-checkbox').forEach(checkbox => {
+            checkbox.checked = true;
+        });
+        updateSelectedCount();
+    }
+
+    function selectNone() {
+        document.querySelectorAll('.tag-policy-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        updateSelectedCount();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        updateSelectedCount();
+    });
+
+    document.getElementById('deleteTagPolicyForm')?.addEventListener('submit', function(e) {
+        const selectedPolicies = document.querySelectorAll('.tag-policy-checkbox:checked');
+        if (selectedPolicies.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one policy to unlink.');
+            return false;
+        }
+        
+        const count = selectedPolicies.length;
+        let confirmMessage = `Are you sure you want to unlink ${count} polic${count !== 1 ? 'ies' : 'y'} from this tag?\n\n`;
+        if (count <= 3) {
+            const policyNames = Array.from(selectedPolicies).map(cb => cb.dataset.name);
+            confirmMessage += `Policies: ${policyNames.join(', ')}\n\n`;
+        }
+        confirmMessage += 'This will NOT remove existing assignments for current tag members, but new members will no longer receive these policies automatically.';
+        
+        if (!confirm(confirmMessage)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+</script>
+{% endblock %}

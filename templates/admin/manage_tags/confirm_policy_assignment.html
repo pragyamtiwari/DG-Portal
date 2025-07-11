@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Confirm Policy Assignment - Data Governance Portal{% endblock %}
+{% block content %}
+<div class="dashboard-header">
+    <h2>Confirm Policy Assignment for Tag: {{ tag_info['name'] }}</h2>
+    <p>Review and confirm policies to be assigned to newly added users.</p>
+</div>
+
+<div class="info-message mb-3">
+    <strong>Newly Added Users:</strong>
+    <ul>
+        {% for user in users_to_assign %}
+        <li>{{ user['name'] }} ({{ user['email'] }})</li>
+        {% endfor %}
+    </ul>
+</div>
+
+{% if tag_policies %}
+<form method="POST" id="confirmAssignmentForm">
+    <div class="table-container">
+        <h3 style="color: #333; margin-bottom: 1rem; font-size: 1.25rem;">Policies Linked to This Tag</h3>
+        
+        <div class="info-message mb-3">
+            💡 Select policies to assign and set their respective timeframes. All policies are checked by default.
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th class="checkbox-cell">
+                        <input type="checkbox" id="selectAllPolicies" class="custom-checkbox" checked
+                               onchange="toggleAllPolicies(this)">
+                    </th>
+                    <th>Policy Name</th>
+                    <th>Description</th>
+                    <th>Due Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for policy in tag_policies %}
+                <tr>
+                    <td class="checkbox-cell">
+                        <input type="checkbox" name="assign_{{ policy['policy_uuid'] }}" 
+                               id="assign_{{ policy['policy_uuid'] }}" class="custom-checkbox policy-checkbox" checked>
+                    </td>
+                    <td>
+                        <div style="font-weight: 500;">{{ policy['policy_name'] }}</div>
+                    </td>
+                    <td>
+                        <div style="color: #666; font-size: 0.9rem;">
+                            {{ policy['policy_description'] or "No description" }}
+                        </div>
+                    </td>
+                    <td>
+                        <input type="date" name="due_date_{{ policy['policy_uuid'] }}" 
+                               value="{{ policy['due_date'] }}" class="form-input" style="width: 150px;">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="action-buttons mt-3" style="display: flex; justify-content: space-between;">
+            <a href="{{ url_for('admin.manage_tags') }}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-action">
+                Assign Selected Policies
+            </button>
+        </div>
+    </div>
+</form>
+{% else %}
+<div class="table-container">
+    <div class="empty-state">
+        <div class="empty-state-icon">🔗</div>
+        <p class="empty-state-text">No policies are linked to this tag. No assignments will be made.</p>
+        <a href="{{ url_for('admin.manage_tags') }}" class="btn btn-secondary mt-3">
+            Back to Manage Tags
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<script>
+    function toggleAllPolicies(masterCheckbox) {
+        document.querySelectorAll('.policy-checkbox').forEach(checkbox => {
+            checkbox.checked = masterCheckbox.checked;
+        });
+    }
+
+    document.getElementById('confirmAssignmentForm')?.addEventListener('submit', function(e) {
+        const selectedPolicies = document.querySelectorAll('.policy-checkbox:checked');
+        if (selectedPolicies.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one policy to assign, or click Cancel.');
+            return false;
+        }
+
+        let allDatesValid = true;
+        selectedPolicies.forEach(checkbox => {
+            const policyUuid = checkbox.id.replace('assign_', '');
+            const dateInput = document.querySelector(`input[name="due_date_${policyUuid}"]`);
+            if (dateInput && !dateInput.value) {
+                allDatesValid = false;
+            }
+        });
+
+        if (!allDatesValid) {
+            e.preventDefault();
+            alert('All selected policies must have a due date.');
+            return false;
+        }
+
+        const userCount = {{ users_to_assign|length }};
+        const policyCount = selectedPolicies.length;
+        
+        if (!confirm(`Confirm assigning ${policyCount} polic${policyCount !== 1 ? 'ies' : 'y'} to ${userCount} user${userCount !== 1 ? 's' : ''}?`)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+</script>
+{% endblock %}

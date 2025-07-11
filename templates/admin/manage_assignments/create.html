@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}Create Assignment - Data Governance Portal{% endblock %}
+{% block content %}
+<div class="dashboard-header">
+    <h2>Create Assignments</h2>
+    <p>Assign policies to multiple users at once</p>
+</div>
+
+<form method="POST" id="assignmentForm">
+    <div class="table-container mb-3">
+        <h3 style="color: #333; margin-bottom: 1rem; font-size: 1.25rem;">Policy & Timeframe</h3>
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; max-width: 600px;">
+            <div class="form-group">
+                <label for="policy" class="form-label">Select Policy</label>
+                <select name="policy" id="policy" class="form-input" required style="width: 100%;">
+                    <option value="">Choose a policy...</option>
+                    {% for policy in policies %}
+                        <option value="{{ policy['uuid'] }}" {% if request.args.get('pre_selected_policy') == policy['uuid'] %}selected{% endif %}>{{ policy['name'] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="due_date" class="form-label">Due Date</label>
+                <input type="date" name="due_date" id="due_date" 
+                       class="form-input" required>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tag Selection Section -->
+    {% if tags %}
+    <div class="table-container mb-3">
+        <h3 style="color: #333; margin-bottom: 1rem; font-size: 1.25rem;">Select by Tags</h3>
+        <div class="info-message mb-3">
+            🏷️ Select tags to automatically include all users in those tags
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
+            {% for tag in tags %}
+            <label class="tag-selector" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" 
+                       name="selected_tags" 
+                       class="tag-checkbox" 
+                       value="{{ tag['uuid'] }}" 
+                       data-members="{{ tag['members'] or '' }}"
+                       onchange="updateUserSelectionFromTags()">
+                <span style="padding: 0.25rem 0.75rem; background: #e0e7ff; color: #4338ca; border-radius: 3px; font-size: 0.9rem;">
+                    {{ tag['name'] }} ({{ tag['member_count'] }} users)
+                </span>
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="table-container">
+        <h3 style="color: #333; margin-bottom: 1rem; font-size: 1.25rem;">Select Users</h3>
+        
+        <div class="info-message mb-3">
+            💡 Tip: Users who already have this policy assigned will be skipped automatically.
+        </div>
+        
+        <div class="bulk-actions">
+            <button type="button" class="bulk-select-btn" onclick="selectAll()">Select All</button>
+            <button type="button" class="bulk-select-btn" onclick="selectNone()">Select None</button>
+            <button type="button" class="bulk-select-btn" onclick="selectAdmins()">Select Admins</button>
+            <button type="button" class="bulk-select-btn" onclick="selectRegularUsers()">Select Regular Users</button>
+            <span class="selected-count" id="selectedCount">0 users selected</span>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th class="checkbox-cell">
+                        <input type="checkbox" id="selectAllCheckbox" class="custom-checkbox" 
+                               onchange="toggleAll(this)">
+                    </th>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Tags</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td class="checkbox-cell">
+                        <input type="checkbox" name="users" value="{{ user['uuid'] }}" 
+                               class="custom-checkbox user-checkbox" 
+                               data-admin="{{ user['is_admin'] }}"
+                               onchange="updateSelectedCount()">
+                    </td>
+                    <td>
+                        <div style="font-weight: 500;">{{ user['name'] }}</div>
+                    </td>
+                    <td style="color: #666;">{{ user['email'] }}</td>
+                    <td>
+                        <span class="role-badge {{ 'role-admin' if user['is_admin'] else 'role-user' }}">
+                            {{ 'Admin' if user['is_admin'] else 'User' }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if user['tags'] %}
+                            {% for tag in user['tags'] %}
+                                <span style="display: inline-block; padding: 0.15rem 0.5rem; background: #f3f4f6; color: #374151; border-radius: 3px; font-size: 0.75rem; margin-right: 0.25rem;">
+                                    {{ tag['name'] }}
+                                </span>
+                            {% endfor %}
+                        {% else %}
+                            <span style="color: #aaa; font-size: 0.85rem;">No tags</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="action-buttons mt-3" style="display: flex; justify-content: space-between;">
+            <a href="{{ url_for('admin.manage_assignments') }}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-action" id="submitBtn" disabled>
+                Create Assignments
+            </button>
+        </div>
+    </div>
+</form>
+
+<script>
+    function updateUserSelectionFromTags() {
+        const selectedTags = document.querySelectorAll('.tag-checkbox:checked');
+        const userCheckboxes = document.querySelectorAll('.user-checkbox');
+        
+        // First, uncheck all users
+        userCheckboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        
+        // Then check users who are in selected tags
+        selectedTags.forEach(tagCheckbox => {
+            const members = tagCheckbox.dataset.members.split(',').filter(m => m);
+            members.forEach(memberUuid => {
+                const userCheckbox = document.querySelector(`.user-checkbox[value="${memberUuid}"]`);
+                if (userCheckbox) {
+                    userCheckbox.checked = true;
+                }
+            });
+        });
+        
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        const checkboxes = document.querySelectorAll('.user-checkbox:checked');
+        const count = checkboxes.length;
+        const countElement = document.getElementById('selectedCount');
+        const submitBtn = document.getElementById('submitBtn');
+        
+        countElement.textContent = `${count} user${count !== 1 ? 's' : ''} selected`;
+        submitBtn.disabled = count === 0;
+        
+        // Update the select all checkbox state
+        const allCheckboxes = document.querySelectorAll('.user-checkbox');
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        
+        if (count === 0) {
+            selectAllCheckbox.indeterminate = false;
+            selectAllCheckbox.checked = false;
+        } else if (count === allCheckboxes.length) {
+            selectAllCheckbox.indeterminate = false;
+            selectAllCheckbox.checked = true;
+        } else {
+            selectAllCheckbox.indeterminate = true;
+        }
+    }
+
+    function toggleAll(masterCheckbox) {
+        const checkboxes = document.querySelectorAll('.user-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = masterCheckbox.checked;
+        });
+        updateSelectedCount();
+    }
+
+    function selectAll() {
+        const checkboxes = document.querySelectorAll('.user-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = true;
+        });
+        updateSelectedCount();
+    }
+
+    function selectNone() {
+        const checkboxes = document.querySelectorAll('.user-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        // Also uncheck all tags
+        document.querySelectorAll('.tag-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        updateSelectedCount();
+    }
+
+    function selectAdmins() {
+        const checkboxes = document.querySelectorAll('.user-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = checkbox.dataset.admin === '1';
+        });
+        updateSelectedCount();
+    }
+
+    function selectRegularUsers() {
+        const checkboxes = document.querySelectorAll('.user-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = checkbox.dataset.admin === '0';
+        });
+        updateSelectedCount();
+    }
+
+    // Initialize the selected count on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        updateSelectedCount();
+    });
+
+    // Form submission handling
+    document.getElementById('assignmentForm').addEventListener('submit', function(e) {
+        const selectedUsers = document.querySelectorAll('.user-checkbox:checked');
+        if (selectedUsers.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one user.');
+            return false;
+        }
+        
+        // Confirm the action
+        const policy = document.getElementById('policy').selectedOptions[0].text;
+        const dueDate = document.getElementById('due_date').value;
+        const userCount = selectedUsers.length;
+        
+        if (!confirm(`Create ${userCount} assignment${userCount !== 1 ? 's' : ''} for policy "${policy}" with due date ${dueDate}?`)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+</script>
+{% endblock %}

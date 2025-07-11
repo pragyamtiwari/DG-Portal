@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Manage Assignments - Data Governance Portal{% endblock %}
+{% block content %}
+<div class="dashboard-header">
+    <h2>Manage Assignments</h2>
+    <p>View all active assignments and track compliance status</p>
+</div>
+
+<div class="quick-actions">
+    <h3 class="quick-actions-title">Assignment Actions</h3>
+    <div class="quick-actions-buttons">
+        <a href="{{ url_for('admin.create_assignment') }}" class="btn btn-action">
+            + Create Assignment
+        </a>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">
+            ← Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<div class="table-container">
+    {% if assignments %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>User</th>
+                <th>Policy</th>
+                <th>Status</th>
+                <th>Assigned Date</th>
+                <th>Due Date</th>
+                <th>Time Remaining</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for assignment in assignments %}
+            <tr>
+                <td>
+                    <div style="font-weight: 500;">{{ assignment["user_name"] }}</div>
+                </td>
+                <td>{{ assignment["policy_name"] }}</td>
+                <td>
+                    {% if assignment["completed_at"] %}
+                        <span class="status-badge status-completed">Completed</span>
+                    {% else %}
+                        {% set time_left = (assignment["assigned_at"] + assignment["timeframe_seconds"]) - now %}
+                        {% if time_left < 0 %}
+                            <span class="status-badge status-overdue">Overdue</span>
+                        {% else %}
+                            <span class="status-badge status-pending">Pending</span>
+                        {% endif %}
+                    {% endif %}
+                </td>
+                <td>{{ assignment["assigned_at"] | timestamp_to_date }}</td>
+                <td>
+                    {{ (assignment["assigned_at"] + assignment["timeframe_seconds"]) | timestamp_to_date }}
+                </td>
+                <td>
+                    {% if not assignment["completed_at"] %}
+                        {% set time_left = (assignment["assigned_at"] + assignment["timeframe_seconds"]) - now %}
+                        {% if time_left > 0 %}
+                            {{ (time_left / 86400) | round | int }} days
+                        {% else %}
+                            <span style="color: #dc3545; font-weight: 500;">
+                                {{ ((time_left / 86400) | abs | round | int) }} days overdue
+                            </span>
+                        {% endif %}
+                    {% else %}
+                        <span style="color: #28a745;">✓ Completed</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin.delete_assignment') }}" onsubmit="return confirm('Are you sure you want to delete this assignment?');">
+                        <input type="hidden" name="assignment_uuid" value="{{ assignment['uuid'] }}">
+                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <p class="empty-state-text">No assignments found. Create a new assignment to get started.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

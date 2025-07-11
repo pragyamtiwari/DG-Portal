@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Link Policy to Tag - Data Governance Portal{% endblock %}
+{% block content %}
+<div class="dashboard-header">
+    <h2>Link Policy to Tag: {{ tag_info['name'] }}</h2>
+    <p>Select a policy to link to this tag. New members added to this tag will automatically receive this policy.</p>
+</div>
+
+<div class="info-message mb-3">
+    <strong>Tag Description:</strong> {{ tag_info['description'] or 'No description provided' }}
+</div>
+
+<form method="POST" id="linkPolicyForm">
+    <div class="table-container">
+        <div class="form-group mb-3">
+            <label for="policy_uuid" class="form-label">Select Policy <span style="color: #dc3545;">*</span></label>
+            <select name="policy_uuid" id="policy_uuid" class="form-input" required>
+                <option value="">Choose a policy...</option>
+                {% for policy in policies %}
+                    <option value="{{ policy['uuid'] }}">{{ policy['name'] }}</option>
+                {% endfor %}
+            </select>
+            {% if not policies %}
+            <div class="info-message mt-2">
+                No policies available to link. Please create policies first.
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="form-group mb-3">
+            <label for="due_date" class="form-label">Default Due Date <span style="color: #dc3545;">*</span></label>
+            <input type="date" name="due_date" id="due_date" 
+                   class="form-input" required>
+            <div class="form-help" style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">
+                This will be the default timeframe for assignments created via this tag.
+            </div>
+        </div>
+
+        <div class="action-buttons mt-4" style="display: flex; justify-content: space-between; padding-top: 1.5rem; border-top: 1px solid #e9ecef;">
+            <a href="{{ url_for('admin.manage_tag_policies', tag_uuid=tag_info['uuid']) }}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-action" {% if not policies %}disabled{% endif %}>
+                Link Policy to Tag
+            </button>
+        </div>
+    </div>
+</form>
+
+<script>
+    document.getElementById('linkPolicyForm').addEventListener('submit', function(e) {
+        const policySelect = document.getElementById('policy_uuid');
+        const dueDate = document.getElementById('due_date').value;
+        const today = new Date();
+        const due = new Date(dueDate);
+        const diffTime = Math.abs(due - today);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const timeframeDays = diffDays;
+        
+        if (!policySelect.value) {
+            e.preventDefault();
+            alert('Please select a policy.');
+            return false;
+        }
+        
+        if (timeframeDays < 1) {
+            e.preventDefault();
+            alert('Timeframe must be at least 1 day.');
+            return false;
+        }
+        
+        const policyName = policySelect.options[policySelect.selectedIndex].text;
+        if (!confirm(`Link policy "${policyName}" to this tag with a default due date of ${dueDate}?`)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+</script>
+{% endblock %}

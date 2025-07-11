@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Manage Policies - Data Governance Portal{% endblock %}
+{% block content %}
+<div class="dashboard-header">
+    <h2>Manage Policies</h2>
+    <p>Create, edit, and manage compliance policies for your organization</p>
+</div>
+
+<div class="quick-actions">
+    <h3 class="quick-actions-title">Policy Actions</h3>
+    <div class="quick-actions-buttons">
+        <a href="{{ url_for('admin.create_policy') }}" class="btn btn-action">
+            + Create Policy
+        </a>
+        
+        <a href="{{ url_for('admin.delete_policy') }}" class="btn btn-danger">
+            Delete Policies
+        </a>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">
+            ← Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<div class="table-container">
+    {% if policies %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Policy Name</th>
+                <th>Description</th>
+                <th>Document</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for policy in policies %}
+            <tr>
+                <td>
+                    <a href="{{ url_for('admin.manage_single_policy', policy_uuid=policy['uuid']) }}" style="font-weight: 500; text-decoration: none; color: inherit;">
+                        {{ policy["name"] }}
+                    </a>
+                </td>
+                <td>
+                    <div style="color: #666; font-size: 0.9rem;">
+                        {{ policy["description"][:100] }}{% if policy["description"]|length > 100 %}...{% endif %}
+                    </div>
+                </td>
+                <td>
+                    {% if policy["pdf_link"] %}
+                    <a href="{{ policy['pdf_link'] }}" target="_blank" class="policy-link" style="color: #3b5998; text-decoration: none;">
+                        📄 View PDF
+                    </a>
+                    {% else %}
+                    <span style="color: #aaa;">No document</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="action-buttons">
+                        <form action="{{ url_for('admin.delete_policy') }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this policy? This will also delete all associated assignments and tag links.');">
+                            <input type="hidden" name="policies" value="{{ policy['uuid'] }}">
+                            <button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Delete</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <p class="empty-state-text">No policies found. Create your first policy to get started.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
